@@ -14,9 +14,9 @@ func main() {
 	serverMux := http.NewServeMux()
 	fileServer := http.StripPrefix("/app", http.FileServer(http.Dir(".")))
 	serverMux.Handle("/app/", apiCfg.middlewareMetricsInc(fileServer))
-	serverMux.HandleFunc("/healthz", healthzHandler)
-	serverMux.HandleFunc("/metrics", apiCfg.metricsHandler)
-	serverMux.HandleFunc("/reset", apiCfg.resetHandler)
+	serverMux.HandleFunc("GET /admin/healthz", healthzHandler)
+	serverMux.HandleFunc("GET /admin/metrics", apiCfg.metricsHandler)
+	serverMux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
 	server := &http.Server{
 		Addr:    ":8080",
 		Handler: serverMux,
@@ -41,14 +41,21 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 }
 
 func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 
 	// TODO: Hent verdien fra atomic.Int32
 	hits := cfg.fileserverHits.Load()
 
 	// TODO: Skriv response i formatet "Hits: x\n"
-	fmt.Fprintf(w, "Hits: %d\n", hits)
+	html := fmt.Sprintf(`<html>
+  <body>
+    <h1>Welcome, Chirpy Admin</h1>
+    <p>Chirpy has been visited %d times!</p>
+  </body>
+</html>`, hits)
+
+	w.Write([]byte(html))
 }
 
 func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
