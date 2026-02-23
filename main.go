@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
+	"strings"
 	"sync/atomic"
 )
 
@@ -93,13 +95,27 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Write(data)
 }
 
+func cleanProfanity(text string) string {
+	forbidden := []string{"kerfuffle", "sharbert", "fornax"}
+	words := strings.Split(text, " ")
+
+	for i, word := range words {
+		if slices.Contains(forbidden, strings.ToLower(word)) {
+			words[i] = "****"
+		}
+
+	}
+
+	return strings.Join(words, " ")
+}
+
 func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 	type chirpRequest struct {
 		Body string `json:"body"`
 	}
 
-	type chirpValid struct {
-		Valid bool `json:"valid"`
+	type chirpResponse struct {
+		CleanedBody string `json:"cleaned_body"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -116,7 +132,8 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, 200, chirpValid{Valid: true})
+	response := cleanProfanity(params.Body)
+	respondWithJSON(w, 200, chirpResponse{CleanedBody: response})
 }
 
 type apiConfig struct {
