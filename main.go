@@ -1,18 +1,42 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"sync/atomic"
+	"time"
+
+	"github.com/Mrexes72/Chirpy/internal/database"
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 func main() {
+	godotenv.Load("connection.env")
+	dbURL := os.Getenv("DB_URL")
+	platform := os.Getenv("PLATFORM")
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("DB_URL: %s", dbURL)
+	log.Printf("Platform: %s", platform)
+	dbQueries := database.New(db)
+
+	log.Printf("Connecting to database at %s", dbURL)
+
 	apiCfg := &apiConfig{
 		fileserverHits: atomic.Int32{},
+		database:       dbQueries,
+		platform:       platform,
 	}
 
 	serverMux := http.NewServeMux()
@@ -21,9 +45,11 @@ func main() {
 
 	serverMux.HandleFunc("GET /admin/healthz", healthzHandler)
 	serverMux.HandleFunc("GET /admin/metrics", apiCfg.metricsHandler)
-	serverMux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
 
 	serverMux.HandleFunc("POST /api/validate_chirp", validateChirpHandler)
+
+	serverMux.HandleFunc("POST /api/users", apiCfg.createUserHandler)
+	serverMux.HandleFunc("POST /admin/reset", apiCfg.resetUsersHandler)
 
 	server := &http.Server{
 		Addr:    ":8080",
@@ -65,13 +91,6 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 </html>`, hits)
 
 	w.Write([]byte(html))
-}
-
-func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: Sett fileserverHits tilbake til 0
-	cfg.fileserverHits.Store(0)
-
-	w.WriteHeader(http.StatusOK)
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
@@ -136,6 +155,62 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, 200, chirpResponse{CleanedBody: response})
 }
 
+func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, 400, "Something went wrong")
+		return
+	}
+
+	dbUser, err := cfg.database.CreateUser(r.Context(), params.Email)
+	if err != nil {
+		log.Printf("CreateUser error: %v", err)
+		respondWithError(w, 500, "Could not create user")
+		return
+	}
+
+	user := User{
+		ID:        dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email:     dbUser.Email,
+	}
+
+	respondWithJSON(w, 201, user)
+}
+
+func (cfg *apiConfig) resetUsersHandler(w http.ResponseWriter, r *http.Request) {
+	if cfg.platform != "dev" {
+		respondWithError(w, 403, "Forbidden")
+		return
+	}
+
+	cfg.fileserverHits.Store(0)
+
+	err := cfg.database.DeleteAllUsers(r.Context())
+	if err != nil {
+		respondWithError(w, 500, "Could not delete users")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	database       *database.Queries
+	platform       string
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }

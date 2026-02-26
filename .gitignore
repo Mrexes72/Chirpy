@@ -1,0 +1,36 @@
+# Environment files med sensitive data
+connection.env
+.env
+*.env
+
+# Database filer (hvis du bruker lokale)
+*.db
+*.sqlite
+
+# Go-spesifikke filer
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+Chirpy
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE-spesifikke filer
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
