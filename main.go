@@ -46,10 +46,10 @@ func main() {
 	serverMux.HandleFunc("GET /admin/healthz", healthzHandler)
 	serverMux.HandleFunc("GET /admin/metrics", apiCfg.metricsHandler)
 
-	serverMux.HandleFunc("POST /api/validate_chirp", validateChirpHandler)
-
 	serverMux.HandleFunc("POST /api/users", apiCfg.createUserHandler)
 	serverMux.HandleFunc("POST /admin/reset", apiCfg.resetUsersHandler)
+
+	serverMux.HandleFunc("POST /api/chirps", apiCfg.createChirpHandler)
 
 	server := &http.Server{
 		Addr:    ":8080",
@@ -128,33 +128,6 @@ func cleanProfanity(text string) string {
 	return strings.Join(words, " ")
 }
 
-func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
-	type chirpRequest struct {
-		Body string `json:"body"`
-	}
-
-	type chirpResponse struct {
-		CleanedBody string `json:"cleaned_body"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	params := chirpRequest{}
-	err := decoder.Decode(&params)
-	if err != nil {
-		respondWithError(w, 400, "Something went wrong")
-		return
-	}
-
-	const maxChirpLength = 140
-	if len(params.Body) > maxChirpLength {
-		respondWithError(w, 400, "Chirp is too long")
-		return
-	}
-
-	response := cleanProfanity(params.Body)
-	respondWithJSON(w, 200, chirpResponse{CleanedBody: response})
-}
-
 func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Email string `json:"email"`
@@ -202,6 +175,50 @@ func (cfg *apiConfig) resetUsersHandler(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 }
 
+func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, 400, "Something went wrong")
+		return
+	}
+
+	const maxChirpLength = 140
+	if len(params.Body) > maxChirpLength {
+		respondWithError(w, 400, "Chirp is too long")
+		return
+	}
+
+	cleanedBod := cleanProfanity(params.Body)
+
+	dbChirp, err := cfg.database.CreateChirp(r.Context(), database.CreateChirpParams{
+		Body:   cleanedBod,
+		UserID: params.UserID,
+	})
+
+	if err != nil {
+		log.Printf("CreateChirp error: %v", err)
+		respondWithError(w, 500, "Could not create chirp")
+		return
+	}
+
+	chirp := Chirp{
+		ID:        dbChirp.ID,
+		CreatedAt: dbChirp.CreatedAt,
+		UpdatedAt: dbChirp.UpdatedAt,
+		Body:      dbChirp.Body,
+		UserID:    dbChirp.UserID,
+	}
+
+	respondWithJSON(w, 201, chirp)
+}
+
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	database       *database.Queries
@@ -213,4 +230,12 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+}
+
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
 }
