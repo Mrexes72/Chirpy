@@ -50,6 +50,7 @@ func main() {
 	serverMux.HandleFunc("POST /admin/reset", apiCfg.resetUsersHandler)
 
 	serverMux.HandleFunc("POST /api/chirps", apiCfg.createChirpHandler)
+	serverMux.HandleFunc("GET /api/chirps", apiCfg.getAllChirpsHandler)
 
 	server := &http.Server{
 		Addr:    ":8080",
@@ -217,6 +218,28 @@ func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	respondWithJSON(w, 201, chirp)
+}
+
+func (cfg *apiConfig) getAllChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	dbChirps, err := cfg.database.GetAllChirps(r.Context())
+	if err != nil {
+		log.Printf("GetAllChirps error: %v", err)
+		respondWithError(w, 500, "Could not get chirps")
+		return
+	}
+
+	chirps := make([]Chirp, len(dbChirps))
+	for i, dbChirp := range dbChirps {
+		chirps[i] = Chirp{
+			ID:        dbChirp.ID,
+			CreatedAt: dbChirp.CreatedAt,
+			UpdatedAt: dbChirp.UpdatedAt,
+			Body:      dbChirp.Body,
+			UserID:    dbChirp.UserID,
+		}
+	}
+
+	respondWithJSON(w, 200, chirps)
 }
 
 type apiConfig struct {
