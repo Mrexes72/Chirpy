@@ -16,6 +16,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	database       *database.Queries
 	platform       string
+	secretKey      string
 }
 
 func main() {
@@ -33,6 +34,11 @@ func main() {
 		log.Fatal("PLATFORM is not set")
 	}
 
+	secret_key := os.Getenv("SECRET_KEY")
+	if secret_key == "" {
+		log.Fatal("SECRET_KEY is not set")
+	}
+
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatal(err)
@@ -48,6 +54,7 @@ func main() {
 		fileserverHits: atomic.Int32{},
 		database:       dbQueries,
 		platform:       platform,
+		secretKey:      secret_key,
 	}
 
 	serverMux := http.NewServeMux()
