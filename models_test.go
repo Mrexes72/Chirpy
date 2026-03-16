@@ -17,6 +17,7 @@ func TestUserStruct_JSONTags(t *testing.T) {
 		UpdatedAt:      time.Now(),
 		Email:          "test@example.com",
 		HashedPassword: "shouldnotappear",
+		IsChirpyRed:    true,
 	}
 
 	// Serialiser til JSON

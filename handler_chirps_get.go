@@ -2,12 +2,29 @@ package main
 
 import (
 	"net/http"
+	"sort"
 
+	"github.com/Mrexes72/Chirpy/internal/database"
 	"github.com/google/uuid"
 )
 
 func (cfg *apiConfig) getAllChirpsHandler(w http.ResponseWriter, r *http.Request) {
-	dbChirps, err := cfg.database.GetAllChirps(r.Context())
+	var dbChirps []database.Chirp
+	var err error
+
+	authorIDStr := r.URL.Query().Get("author_id")
+
+	if authorIDStr != "" {
+		authorID, err := uuid.Parse(authorIDStr)
+		if err != nil {
+			respondWithError(w, 400, "Invalid author ID", err)
+			return
+		}
+		dbChirps, err = cfg.database.GetChirpsByAuthorID(r.Context(), authorID)
+	} else {
+		dbChirps, err = cfg.database.GetAllChirps(r.Context())
+	}
+
 	if err != nil {
 		respondWithError(w, 500, "Could not get chirps", err)
 		return
@@ -23,6 +40,19 @@ func (cfg *apiConfig) getAllChirpsHandler(w http.ResponseWriter, r *http.Request
 			UserID:    dbChirp.UserID,
 		}
 	}
+
+	sortOrder := r.URL.Query().Get("sort")
+
+	if sortOrder == "" {
+		sortOrder = "asc"
+	}
+
+	sort.Slice(chirps, func(i, j int) bool {
+		if sortOrder == "desc" {
+			return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
+		}
+		return chirps[i].CreatedAt.Before(chirps[j].CreatedAt)
+	})
 
 	respondWithJSON(w, 200, chirps)
 }
